@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monthly Time Sheet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f4f6f9; --card:#fff; --ink:#1c2733; --muted:#6b7785; --line:#dde3ea;
+  --brand:#1f4e79; --brand-2:#2f6fa7; --brand-soft:#e6eef7;
+  --sat:#fdeeee; --hol:#fff2dd; --ok:#1e7d4f; --bad:#c0392b; --warn:#b26a00;
+  --input:#fff;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:'Sarabun',system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.4}
+header.app{background:var(--brand);color:#fff;padding:14px 20px 0}
+header.app h1{margin:0;font-size:20px;font-weight:700;letter-spacing:.2px}
+header.app .sub{opacity:.8;font-size:13px}
+.top{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:flex-end;margin:12px 0 12px}
+.field{display:flex;flex-direction:column;gap:3px}
+.field label{font-size:12px;opacity:.85}
+.field select,.field input{font:inherit;padding:6px 8px;border-radius:6px;border:1px solid transparent;min-width:0;background:#fff;color:var(--ink)}
+.field input[type=number]{width:90px}
+.field.name input{width:230px}
+.field.div input{width:170px}
+.tabs{display:flex;gap:4px;flex-wrap:wrap}
+.tab{border:0;background:transparent;color:#cfe0f1;padding:9px 16px;font:inherit;font-weight:600;cursor:pointer;border-radius:8px 8px 0 0}
+.tab.active{background:var(--bg);color:var(--brand)}
+.tab:hover:not(.active){background:rgba(255,255,255,.12);color:#fff}
+main{padding:16px 20px 60px;max-width:1500px;margin:0 auto}
+.panel{display:none}.panel.active{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.toolbar .grow{flex:1}
+button.btn{font:inherit;padding:7px 14px;border-radius:7px;border:1px solid var(--line);background:#fff;color:var(--ink);cursor:pointer;font-weight:500}
+button.btn:hover{background:var(--brand-soft)}
+button.btn.primary{background:var(--brand-2);color:#fff;border-color:var(--brand-2)}
+button.btn.primary:hover{background:var(--brand)}
+button.btn.danger{color:var(--bad)}
+.hint{color:var(--muted);font-size:13px}
+.saved{color:var(--ok);font-size:13px;opacity:0;transition:opacity .3s}
+.saved.on{opacity:1}
+.banner{background:#fff8e1;border:1px solid #f0d98a;color:#6b5300;padding:9px 12px;border-radius:8px;margin-bottom:12px;font-size:14px}
+
+/* ---- tables ---- */
+.scroll{overflow:auto;border:1px solid var(--line);border-radius:10px;background:#fff}
+table{border-collapse:collapse;width:100%}
+th,td{border-bottom:1px solid var(--line);padding:4px 6px;text-align:center;white-space:nowrap}
+thead th{background:var(--brand-soft);color:var(--brand);font-weight:600;position:sticky;top:0;z-index:2}
+tbody tr.sat td{background:var(--sat)}
+tbody tr.hol td{background:var(--hol)}
+td.day{font-weight:600;min-width:120px;text-align:left}
+td.day .dn{display:inline-block;min-width:22px}
+td.day .wd{color:var(--muted);font-weight:400;font-size:13px}
+td.day .tag{font-size:11px;font-weight:500;padding:1px 6px;border-radius:9px;background:#f5c6c6;color:#8a1f1f;margin-left:4px}
+tr.hol td.day .tag{background:#f6d99a;color:#7a4b00}
+td.day .dt{display:block;font-size:11px;color:var(--brand-2);font-weight:500}
+td.cont{color:var(--muted);text-align:right}
+td input,td select{font:inherit;border:1px solid var(--line);border-radius:6px;padding:5px 6px;background:var(--input);color:var(--ink);max-width:100%}
+td input.t{width:70px;text-align:center}
+td select{min-width:110px}
+td select.cl{min-width:170px}
+td input.bad{border-color:var(--bad);background:#fdecea}
+td input:focus,td select:focus{outline:2px solid var(--brand-2);outline-offset:-1px}
+td.num{font-variant-numeric:tabular-nums;min-width:44px}
+td.act{white-space:nowrap}
+button.ic{border:1px solid var(--line);background:#fff;border-radius:6px;width:28px;height:28px;cursor:pointer;font-size:15px;line-height:1;color:var(--brand-2)}
+button.ic:hover{background:var(--brand-soft)}
+button.ic.rm{color:var(--bad)}
+tfoot td{font-weight:700;background:var(--brand-soft);position:sticky;bottom:0}
+.warn{color:var(--bad);font-size:12px}
+
+/* summary sheet */
+table.sum th,table.sum td{padding:3px 5px;font-size:13px;min-width:38px}
+table.sum td.lbl,table.sum th.lbl{text-align:left;min-width:190px;position:sticky;left:0;background:#fff;z-index:1;font-weight:500}
+table.sum thead th.lbl{background:var(--brand-soft);z-index:3}
+table.sum td.per{min-width:64px}
+table.sum .off{background:var(--sat)}
+table.sum .hd{background:var(--hol)}
+table.sum tr.total td{font-weight:700;background:var(--brand-soft)}
+table.sum tr.total td.lbl{background:var(--brand-soft)}
+table.sum tr.sec td{background:#eef1f5;text-align:left;font-weight:600;color:var(--muted)}
+table.sum td.tot{font-weight:700;background:#f7f9fb}
+table.sum td.z{color:#b4bcc6}
+
+h2{font-size:17px;margin:0 0 10px;color:var(--brand)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+textarea{width:100%;font:inherit;border:1px solid var(--line);border-radius:8px;padding:8px;min-height:180px;background:#fff;color:var(--ink)}
+.set-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px}
+.set-row .field label{color:var(--muted);opacity:1}
+.set-row .field input{border:1px solid var(--line)}
+.print-title{display:none}
+
+@media (max-width:700px){
+  main{padding:12px 10px 60px}
+  header.app{padding:12px 12px 0}
+  .field.name input{width:100%}.field.name{flex:1 1 100%}
+}
+@media print{
+  @page{size:A4 landscape;margin:10mm}
+  body{background:#fff;font-size:11px}
+  header.app,.toolbar,.banner,.hint,button.ic,.act,.noprint{display:none!important}
+  main{padding:0;max-width:none}
+  .panel{display:none!important}.panel.active{display:block!important}
+  .scroll{overflow:visible;border:0}
+  thead th,tfoot td{position:static}
+  .print-title{display:block;margin-bottom:8px}
+  .print-title h3{margin:0;font-size:15px}
+  td input,td select{border:0;background:transparent;appearance:none;-webkit-appearance:none;padding:0;font-size:11px;text-align:center}
+  table.sum th,table.sum td{font-size:9px;padding:2px 2px;min-width:0}
+  table.sum td.lbl,table.sum th.lbl{min-width:0;position:static}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+
+/* ---- v2 additions ---- */
+#login{min-height:100vh;display:none;align-items:center;justify-content:center;padding:20px;background:linear-gradient(160deg,#1f4e79,#2f6fa7)}
+#login .box{background:#fff;border-radius:14px;padding:32px 30px;max-width:420px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.25);text-align:center}
+#login h1{margin:0 0 4px;font-size:22px;color:var(--brand)}
+#login p{color:var(--muted);margin:4px 0 18px}
+.gbtn{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:11px 14px;border:1px solid #cfd6de;border-radius:8px;background:#fff;font:inherit;font-weight:600;cursor:pointer}
+.gbtn:hover{background:#f5f8fb}
+.gbtn svg{width:20px;height:20px}
+#login input{font:inherit;width:100%;padding:9px 10px;margin-bottom:8px;border:1px solid var(--line);border-radius:8px}
+.err{color:var(--bad);font-size:13px;margin-top:10px;min-height:18px}
+.userchip{display:flex;align-items:center;gap:8px;font-size:13px}
+.userchip img{width:28px;height:28px;border-radius:50%;background:#fff}
+.userchip button{background:rgba(255,255,255,.15);border:0;color:#fff;border-radius:6px;padding:4px 10px;cursor:pointer;font:inherit;font-size:12px}
+.userchip button:hover{background:rgba(255,255,255,.28)}
+.hrow{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.chip{display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600}
+.chip.draft{background:#eef1f5;color:#556}
+.chip.submitted{background:#fff2cc;color:#8a5a00}
+.chip.approved{background:#d9f2e3;color:#14683d}
+.chip.none{background:#f3f3f3;color:#999}
+.modebar{background:#fff8e1;border-bottom:1px solid #f0d98a;color:#6b5300;padding:6px 20px;font-size:13px}
+.field select:disabled,.field input:disabled{opacity:.6}
+.ctrl{display:flex;flex-wrap:wrap;gap:10px 14px;align-items:flex-end}
+.ctrl .field label{color:var(--muted);opacity:1}
+.ctrl .field select,.ctrl .field input{border:1px solid var(--line);background:#fff}
+.presets{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 4px}
+.presets button{font:inherit;font-size:13px;padding:4px 11px;border-radius:14px;border:1px solid var(--line);background:#fff;cursor:pointer;color:var(--brand)}
+.presets button:hover,.presets button.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+table.piv th,table.piv td{padding:5px 9px;font-size:14px}
+table.piv td.rl,table.piv th.rl{text-align:left;position:sticky;left:0;background:#fff;z-index:1;min-width:160px;font-weight:500}
+table.piv thead th.rl{background:var(--brand-soft);z-index:3}
+table.piv td.tt{font-weight:700;background:#f7f9fb;text-align:right;min-width:110px;position:relative}
+table.piv td.tt .bar{position:absolute;left:0;top:3px;bottom:3px;background:rgba(47,111,167,.16);border-radius:0 4px 4px 0;z-index:0}
+table.piv td.tt span{position:relative;z-index:1}
+table.piv td.n{text-align:right;font-variant-numeric:tabular-nums}
+table.piv td.z{color:#c0c7d0}
+table.piv tfoot td{font-weight:700;background:var(--brand-soft);position:static}
+table.adm td,table.adm th{padding:7px 10px}
+table.adm td.l,table.adm th.l{text-align:left}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#243447;color:#fff;padding:10px 18px;border-radius:9px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .25s;z-index:99;max-width:90vw}
+#toast.on{opacity:1}
+.ro td input,.ro td select{background:#f4f6f9;pointer-events:none}
+.savestate{font-size:13px;color:var(--muted)}
+.savestate.ok{color:var(--ok)}.savestate.err{color:var(--bad)}
+.btn.sm{padding:3px 10px;font-size:13px}
+@media print{ .modebar,.userchip,.presets,.ctrl{display:none!important} }
+</style>
+</head>
+<body>
+
+<!-- ===== หน้าเข้าสู่ระบบ ===== -->
+<div id="login">
+  <div class="box">
+    <h1 id="lgCompany">Monthly Time Sheet</h1>
+    <p>ระบบบันทึกเวลาทำงานรายเดือน</p>
+    <div id="lgFirebase" style="display:none">
+      <button class="gbtn" id="btnGoogle"><svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.9 2.4 30.4 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.1 5.3-4.5 7l7.1 5.5c4.2-3.9 6.6-9.6 6.6-17z"/><path fill="#FBBC05" d="M10.5 28.7c-.5-1.4-.8-3-.8-4.7s.3-3.2.8-4.7l-7.9-6.1C.9 16.4 0 20.1 0 24s.9 7.6 2.6 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.4 0 11.9-2.1 15.9-5.8l-7.1-5.5c-2 1.4-4.8 2.3-8.8 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg>เข้าสู่ระบบด้วย Google</button>
+    </div>
+    <div id="lgDemo" style="display:none">
+      <div class="banner" style="text-align:left">โหมดทดลอง — ยังไม่ได้ตั้งค่า Firebase ข้อมูลเก็บในเบราว์เซอร์นี้เท่านั้น (ผู้ใช้คนแรกเป็นแอดมิน)</div>
+      <input id="dmEmail" type="email" placeholder="อีเมล (ทดลอง)">
+      <input id="dmName" placeholder="ชื่อ-นามสกุล">
+      <button class="gbtn" id="btnDemo">เข้าสู่ระบบ (โหมดทดลอง)</button>
+    </div>
+    <div class="err" id="lgErr"></div>
+  </div>
+</div>
+
+<!-- ===== แอป ===== -->
+<div id="app" style="display:none">
+<div class="modebar" id="modebar" style="display:none">โหมดทดลอง — ข้อมูลเก็บในเบราว์เซอร์นี้ ยังไม่เชื่อม Firebase</div>
+<header class="app">
+  <div class="hrow">
+    <div><h1 id="hCompany">Dr.Virach &amp; Associates</h1><span class="sub">MONTHLY TIME SHEET</span></div>
+    <div class="userchip"><img id="uPhoto" alt=""><span id="uName"></span><span class="chip" id="uRole" style="background:rgba(255,255,255,.2);color:#fff"></span><button id="btnOut">ออกจากระบบ</button></div>
+  </div>
+  <div class="top">
+    <div class="field" id="fEmp" style="display:none"><label for="empSel">ดูของพนักงาน</label><select id="empSel" style="min-width:200px"></select></div>
+    <div class="field name"><label for="pName">ชื่อในรายงาน (NAME)</label><input id="pName" autocomplete="off"></div>
+    <div class="field div"><label for="pDiv">สาย/แผนก (DIVISION)</label><input id="pDiv" placeholder="เช่น สายรัชนีกร" autocomplete="off"></div>
+    <div class="field"><label for="mSel">เดือน (MONTH)</label><select id="mSel"></select></div>
+    <div class="field"><label for="yIn">ปี พ.ศ. (YEAR)</label><input id="yIn" type="number" min="2500" max="2700"></div>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-tab="report">บันทึกเวลา</button>
+    <button class="tab" data-tab="sheet">สรุปรายเดือน</button>
+    <button class="tab" data-tab="ot">O.T.</button>
+    <button class="tab" data-tab="reports">รายงานวิเคราะห์</button>
+    <button class="tab adminonly" data-tab="admin" style="display:none">พนักงาน / อนุมัติ</button>
+    <button class="tab adminonly" data-tab="settings" style="display:none">ตั้งค่า / วันหยุด</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ===== บันทึกเวลา ===== -->
+  <section class="panel active" id="p-report">
+    <div class="toolbar">
+      <span class="chip draft" id="stChip">ร่าง</span>
+      <button class="btn primary" id="bXlsx">⬇ ดาวน์โหลด Excel (ฟอร์มเดิม)</button>
+      <button class="btn" id="bPrint">🖨 พิมพ์ / PDF</button>
+      <button class="btn" id="bSubmit">ส่งรายงานเดือนนี้</button>
+      <button class="btn" id="bApprove" style="display:none">อนุมัติ</button>
+      <button class="btn danger" id="bClear">ล้างเดือนนี้</button>
+      <span class="grow"></span>
+      <span class="savestate" id="saveState"></span>
+    </div>
+    <div class="banner" id="roBanner" style="display:none">รายงานเดือนนี้ได้รับการอนุมัติแล้ว จึงแก้ไขไม่ได้ (ติดต่อแอดมินเพื่อยกเลิกการอนุมัติ)</div>
+    <div class="hint" style="margin-bottom:8px">พิมพ์เวลาเป็น <b>8.30</b>, <b>8:30</b> หรือ <b>0830</b> ได้ · หักพักเที่ยง/พักเย็นอัตโนมัติ · วันเดียวหลายงานกดปุ่ม <b>＋</b> · ฟอร์ม Excel รองรับสูงสุด 32 แถว/เดือน</div>
+    <div class="print-title"><h3 id="ptReport"></h3></div>
+    <div class="scroll" style="max-height:calc(100vh - 330px)">
+      <table id="tReport">
+        <thead><tr>
+          <th>วันที่</th><th>เข้า (In)</th><th>ออก (Out)</th><th>ชื่อลูกค้า / รายการ</th><th>Service (Period)</th><th>รายละเอียดงาน</th><th>ชม.</th><th>นาที</th><th>O.T./Extra</th><th class="act"></th>
+        </tr></thead>
+        <tbody id="rbody"></tbody>
+        <tfoot><tr><td colspan="6" style="text-align:right">รวม</td><td class="num" id="totH">0</td><td class="num" id="totM">0</td><td colspan="2"><span id="rowCount" class="hint"></span></td></tr></tfoot>
+      </table>
+    </div>
+  </section>
+
+  <!-- ===== สรุปรายเดือน ===== -->
+  <section class="panel" id="p-sheet">
+    <div class="toolbar">
+      <button class="btn primary" id="bXlsx2">⬇ ดาวน์โหลด Excel (ฟอร์มเดิม)</button>
+      <button class="btn" id="bPrint2">🖨 พิมพ์ / PDF</button>
+    </div>
+    <div class="print-title"><h3 id="ptSheet"></h3></div>
+    <div class="scroll" id="sheetWrap"></div>
+    <p class="hint">สรุปคำนวณอัตโนมัติจากหน้า “บันทึกเวลา” · หน่วยเป็นชั่วโมง (ทศนิยม) · สีชมพู = เสาร์-อาทิตย์, สีส้ม = นักขัตฤกษ์</p>
+  </section>
+
+  <!-- ===== O.T. ===== -->
+  <section class="panel" id="p-ot">
+    <div class="toolbar">
+      <div class="field" style="flex-direction:row;align-items:center;gap:8px"><label for="otFilter" style="color:var(--muted)">ประเภท</label>
+        <select id="otFilter" style="font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:6px"><option>O.T.</option><option>Extra Hours</option></select></div>
+      <button class="btn" id="bPrint3">🖨 พิมพ์ / PDF</button>
+    </div>
+    <div class="print-title"><h3 id="ptOt"></h3></div>
+    <div class="scroll"><table id="tOt">
+      <thead><tr><th>วันที่</th><th>เริ่ม</th><th>ถึง</th><th>ชื่อลูกค้า</th><th>Service</th><th>ชม.</th><th>นาที</th><th>ประเภท</th></tr></thead>
+      <tbody></tbody><tfoot></tfoot></table></div>
+    <p class="hint">วันทำงานปกติ: นับเฉพาะส่วนที่เกิน <span id="otStd">8</span> ชม./วัน · เสาร์-อาทิตย์/นักขัตฤกษ์: นับทั้งหมด</p>
+  </section>
+
+  <!-- ===== รายงานวิเคราะห์ ===== -->
+  <section class="panel" id="p-reports">
+    <div class="card">
+      <div class="ctrl">
+        <div class="field"><label for="rYear">ปี พ.ศ.</label><input id="rYear" type="number" style="width:90px"></div>
+        <div class="field"><label for="rM1">ตั้งแต่เดือน</label><select id="rM1"></select></div>
+        <div class="field"><label for="rM2">ถึงเดือน</label><select id="rM2"></select></div>
+        <div class="field"><label for="rMeas">ข้อมูลที่แสดง</label><select id="rMeas">
+          <option value="charge">ชั่วโมงเรียกเก็บ (Charge)</option><option value="noncharge">ชั่วโมง Non-charge / ลา</option>
+          <option value="total">ชั่วโมงทั้งหมด</option><option value="ot">ชั่วโมง O.T.</option><option value="extra">ชั่วโมง Extra Hours</option></select></div>
+        <div class="field"><label for="rRow">แถว (จัดกลุ่มตาม)</label><select id="rRow"></select></div>
+        <div class="field"><label for="rCol">คอลัมน์</label><select id="rCol"></select></div>
+      </div>
+      <div class="ctrl" style="margin-top:10px">
+        <div class="field" id="rEmpF"><label for="rEmp">พนักงาน</label><select id="rEmp" style="min-width:180px"></select></div>
+        <div class="field"><label for="rJob">จ็อบ/ลูกค้า</label><select id="rJob" style="min-width:150px"></select></div>
+        <div class="field"><label for="rSvc">Period</label><select id="rSvc" style="min-width:110px"></select></div>
+        <button class="btn primary" id="rGo">สร้างรายงาน</button>
+        <button class="btn" id="rXlsx">⬇ Excel</button>
+        <button class="btn" id="rPrint">🖨 พิมพ์</button>
+      </div>
+      <div class="presets" id="presets"></div>
+    </div>
+    <div class="print-title"><h3 id="ptRep"></h3></div>
+    <div class="scroll" id="repWrap"><div style="padding:24px;color:var(--muted)">เลือกเงื่อนไขแล้วกด “สร้างรายงาน”</div></div>
+    <p class="hint" id="repNote"></p>
+  </section>
+
+  <!-- ===== พนักงาน / อนุมัติ (แอดมิน) ===== -->
+  <section class="panel" id="p-admin">
+    <div class="toolbar">
+      <b id="admTitle"></b><span class="grow"></span>
+      <button class="btn" id="admZip">⬇ ดาวน์โหลด Excel ทุกคน (ZIP)</button>
+      <button class="btn" id="admRefresh">↻ รีเฟรช</button>
+    </div>
+    <div class="scroll"><table class="adm" id="tAdm"><thead><tr>
+      <th class="l">พนักงาน</th><th class="l">อีเมล</th><th>สิทธิ์</th><th>สถานะเดือนนี้</th><th>ชม.รวม</th><th>อัปเดตล่าสุด</th><th></th></tr></thead><tbody></tbody></table></div>
+    <p class="hint">พนักงานจะปรากฏในรายการหลังล็อกอินด้วย Google ครั้งแรก · แอดมินอนุมัติ/ยกเลิกอนุมัติ และแก้ไขข้อมูลแทนพนักงานได้</p>
+  </section>
+
+  <!-- ===== ตั้งค่า (แอดมิน) ===== -->
+  <section class="panel" id="p-settings">
+    <div class="card"><h2>ค่าทั่วไป</h2>
+      <div class="set-row">
+        <div class="field"><label>ชื่อบริษัท</label><input id="sCompany" style="width:260px"></div>
+        <div class="field"><label>ชั่วโมงมาตรฐาน/วัน</label><input id="sStd" type="number" step="0.5" min="1" max="24" style="width:110px"></div>
+        <div class="field"><label>ชม.พักกลางวัน (ใช้คำนวณเริ่ม O.T.)</label><input id="sLunch" type="number" step="0.5" min="0" max="4" style="width:110px"></div>
+      </div>
+      <div class="field"><label class="hint">ช่วงพักที่หักอัตโนมัติ (บรรทัดละ 1 ช่วง)</label><textarea id="sBreaks" style="min-height:70px;max-width:320px"></textarea></div>
+      <p class="hint" style="margin:8px 0 0">⚠ ฟอร์ม Excel เดิมหักพัก 12:00–13:00 และ 20:00–21:00 ตายตัวในสูตร ถ้าแก้ช่วงพักที่นี่ ตัวเลขในหน้าเว็บกับไฟล์ Excel จะไม่ตรงกัน</p></div>
+    <div class="grid2">
+      <div class="card"><h2>รายชื่อลูกค้า / จ็อบ</h2><div class="hint" style="margin-bottom:6px">บรรทัดละ 1 ชื่อ (ลำดับนี้คือลำดับในสรุปรายเดือน) · ใส่ได้สูงสุด 489 รายการ</div><textarea id="sClients"></textarea></div>
+      <div class="card"><h2>Service / Period</h2><div class="hint" style="margin-bottom:6px">บรรทัดละ 1 รายการ (เช่น 69YE, Q1/69)</div><textarea id="sPeriods"></textarea></div>
+    </div>
+    <div class="card"><h2>วันหยุดนักขัตฤกษ์ / วันหยุดตามประกาศ</h2>
+      <div class="scroll" style="max-height:340px"><table id="tHol"><thead><tr><th>วันที่ (ค.ศ.)</th><th>ชื่อวันหยุด</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div class="toolbar" style="margin-top:8px"><button class="btn" id="bAddHol">＋ เพิ่มวันหยุด</button></div></div>
+    <div class="card"><div class="toolbar" style="margin:0"><button class="btn primary" id="bSaveSet">บันทึกการตั้งค่า (ใช้กับพนักงานทุกคน)</button><span class="saved" id="savedSet">✓ บันทึกแล้ว</span></div></div>
+  </section>
+</main>
+</div>
+<div id="toast"></div>
+
+<script src="vendor/jszip.min.js"></script>
+<script src="vendor/xlsx.full.min.js"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
