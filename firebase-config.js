@@ -7,7 +7,6 @@
 
    ตราบใดที่ firebaseConfig ยังเป็น null ระบบจะทำงานใน "โหมดทดลอง" (เก็บข้อมูลในเครื่องเท่านั้น)
    หมายเหตุ: ค่า apiKey ของ Firebase ไม่ใช่ความลับ ความปลอดภัยอยู่ที่ Security Rules */
-export const firebaseConfig = null;
 /* ตัวอย่าง:
 export const firebaseConfig = {
   apiKey: "AIzaSyBAO50f0i4xPnrcmF6A-Xumk05tH9-xlEo",
