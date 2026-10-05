@@ -154,6 +154,11 @@ table.piv td.z{color:#c0c7d0}
 table.piv tfoot td{font-weight:700;background:var(--brand-soft);position:static}
 table.adm td,table.adm th{padding:7px 10px}
 table.adm td.l,table.adm th.l{text-align:left}
+#profModal{position:fixed;inset:0;background:rgba(15,30,50,.55);display:none;align-items:center;justify-content:center;z-index:90;padding:16px}
+#profModal .box{background:#fff;border-radius:12px;padding:22px 24px;width:min(440px,100%);box-shadow:0 12px 40px rgba(0,0,0,.3)}
+#profModal h2{margin:0 0 4px;font-size:19px;color:var(--brand)} #profModal p{margin:0 0 14px;color:var(--muted);font-size:14px}
+#profModal label{display:block;font-size:13px;color:var(--muted);margin:10px 0 3px} #profModal input,#profModal select{width:100%;box-sizing:border-box}
+#profModal .err{color:#c0392b;font-size:13px;min-height:18px;margin-top:8px} #profModal button{margin-top:6px;width:100%}
 #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#243447;color:#fff;padding:10px 18px;border-radius:9px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .25s;z-index:99;max-width:90vw}
 #toast.on{opacity:1}
 .ro td input,.ro td select{background:#f4f6f9;pointer-events:none}
@@ -170,6 +175,11 @@ table.adm td.l,table.adm th.l{text-align:left}
   <div class="box">
     <h1 id="lgCompany">Monthly Time Sheet</h1>
     <p>ระบบบันทึกเวลาทำงานรายเดือน</p>
+    <div style="text-align:left;margin-bottom:12px">
+      <label for="lgDiv" style="display:block;font-size:13px;color:var(--muted);margin-bottom:3px">สายงาน (Division)</label>
+      <select id="lgDiv" style="font:inherit;width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:#fff"></select>
+      <div class="hint" style="margin-top:4px">เลือกสายงานก่อนเข้าสู่ระบบ — ระบบจะแสดงรายชื่อลูกค้าเฉพาะสายของคุณ (ผู้ใช้เดิมที่เคยเลือกแล้วข้ามได้)</div>
+    </div>
     <div id="lgFirebase" style="display:none">
       <button class="gbtn" id="btnGoogle"><svg viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.9 2.4 30.4 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.1 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.4c-.5 2.9-2.1 5.3-4.5 7l7.1 5.5c4.2-3.9 6.6-9.6 6.6-17z"/><path fill="#FBBC05" d="M10.5 28.7c-.5-1.4-.8-3-.8-4.7s.3-3.2.8-4.7l-7.9-6.1C.9 16.4 0 20.1 0 24s.9 7.6 2.6 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.4 0 11.9-2.1 15.9-5.8l-7.1-5.5c-2 1.4-4.8 2.3-8.8 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg>เข้าสู่ระบบด้วย Google</button>
     </div>
@@ -194,7 +204,7 @@ table.adm td.l,table.adm th.l{text-align:left}
   <div class="top">
     <div class="field" id="fEmp" style="display:none"><label for="empSel">ดูของพนักงาน</label><select id="empSel" style="min-width:200px"></select></div>
     <div class="field name"><label for="pName">ชื่อในรายงาน (NAME)</label><input id="pName" autocomplete="off"></div>
-    <div class="field div"><label for="pDiv">สาย/แผนก (DIVISION)</label><input id="pDiv" placeholder="เช่น สายรัชนีกร" autocomplete="off"></div>
+    <div class="field div"><label for="pDiv">สาย/แผนก (DIVISION)</label><select id="pDiv"></select></div>
     <div class="field"><label for="mSel">เดือน (MONTH)</label><select id="mSel"></select></div>
     <div class="field"><label for="yIn">ปี พ.ศ. (YEAR)</label><input id="yIn" type="number" min="2500" max="2700"></div>
   </div>
@@ -222,8 +232,8 @@ table.adm td.l,table.adm th.l{text-align:left}
       <span class="savestate" id="saveState"></span>
     </div>
     <div class="banner" id="roBanner" style="display:none">รายงานเดือนนี้ได้รับการอนุมัติแล้ว จึงแก้ไขไม่ได้ (ติดต่อแอดมินเพื่อยกเลิกการอนุมัติ)</div>
-    <div class="hint" style="margin-bottom:8px">พิมพ์เวลาเป็น <b>8.30</b>, <b>8:30</b> หรือ <b>0830</b> ได้ · หักพักเที่ยง/พักเย็นอัตโนมัติ · วันเดียวหลายงานกดปุ่ม <b>＋</b> · ฟอร์ม Excel รองรับสูงสุด 32 แถว/เดือน</div>
     <div class="print-title"><h3 id="ptReport"></h3></div>
+    <div class="hint" style="margin-bottom:8px">พิมพ์เวลาเป็น <b>8.30</b>, <b>8:30</b> หรือ <b>0830</b> ได้ · หักพักเที่ยง/พักเย็นอัตโนมัติ · วันเดียวหลายงานกดปุ่ม <b>＋</b> · ฟอร์ม Excel รองรับสูงสุด 32 แถว/เดือน</div>
     <div class="scroll" style="max-height:calc(100vh - 330px)">
       <table id="tReport">
         <thead><tr>
@@ -267,21 +277,12 @@ table.adm td.l,table.adm th.l{text-align:left}
         <div class="field"><label for="rYear">ปี พ.ศ.</label><input id="rYear" type="number" style="width:90px"></div>
         <div class="field"><label for="rM1">ตั้งแต่เดือน</label><select id="rM1"></select></div>
         <div class="field"><label for="rM2">ถึงเดือน</label><select id="rM2"></select></div>
-        <div class="field"><label for="rMeas">ข้อมูลที่แสดง</label><select id="rMeas">
-          <option value="charge">ชั่วโมงเรียกเก็บ (Charge)</option><option value="noncharge">ชั่วโมง Non-charge / ลา</option>
-          <option value="total">ชั่วโมงทั้งหมด</option><option value="ot">ชั่วโมง O.T.</option><option value="extra">ชั่วโมง Extra Hours</option></select></div>
-        <div class="field"><label for="rRow">แถว (จัดกลุ่มตาม)</label><select id="rRow"></select></div>
-        <div class="field"><label for="rCol">คอลัมน์</label><select id="rCol"></select></div>
-      </div>
-      <div class="ctrl" style="margin-top:10px">
         <div class="field" id="rEmpF"><label for="rEmp">พนักงาน</label><select id="rEmp" style="min-width:180px"></select></div>
-        <div class="field"><label for="rJob">จ็อบ/ลูกค้า</label><select id="rJob" style="min-width:150px"></select></div>
-        <div class="field"><label for="rSvc">Period</label><select id="rSvc" style="min-width:110px"></select></div>
+        <div class="field"><label for="rGrp">แสดงแยกตาม</label><select id="rGrp"></select></div>
         <button class="btn primary" id="rGo">สร้างรายงาน</button>
         <button class="btn" id="rXlsx">⬇ Excel</button>
         <button class="btn" id="rPrint">🖨 พิมพ์</button>
       </div>
-      <div class="presets" id="presets"></div>
     </div>
     <div class="print-title"><h3 id="ptRep"></h3></div>
     <div class="scroll" id="repWrap"><div style="padding:24px;color:var(--muted)">เลือกเงื่อนไขแล้วกด “สร้างรายงาน”</div></div>
@@ -293,6 +294,9 @@ table.adm td.l,table.adm th.l{text-align:left}
     <div class="toolbar">
       <b id="admTitle"></b><span class="grow"></span>
       <button class="btn" id="admZip">⬇ ดาวน์โหลด Excel ทุกคน (ZIP)</button>
+      <button class="btn" id="admBackup">💾 สำรองข้อมูลทั้งหมด (JSON)</button>
+      <button class="btn" id="admRestore">⬆ นำเข้าข้อมูล (JSON)</button>
+      <input type="file" id="admFile" accept=".json,application/json" style="display:none">
       <button class="btn" id="admRefresh">↻ รีเฟรช</button>
     </div>
     <div class="scroll"><table class="adm" id="tAdm"><thead><tr>
@@ -311,7 +315,7 @@ table.adm td.l,table.adm th.l{text-align:left}
       <div class="field"><label class="hint">ช่วงพักที่หักอัตโนมัติ (บรรทัดละ 1 ช่วง)</label><textarea id="sBreaks" style="min-height:70px;max-width:320px"></textarea></div>
       <p class="hint" style="margin:8px 0 0">⚠ ฟอร์ม Excel เดิมหักพัก 12:00–13:00 และ 20:00–21:00 ตายตัวในสูตร ถ้าแก้ช่วงพักที่นี่ ตัวเลขในหน้าเว็บกับไฟล์ Excel จะไม่ตรงกัน</p></div>
     <div class="grid2">
-      <div class="card"><h2>รายชื่อลูกค้า / จ็อบ</h2><div class="hint" style="margin-bottom:6px">บรรทัดละ 1 ชื่อ (ลำดับนี้คือลำดับในสรุปรายเดือน) · ใส่ได้สูงสุด 489 รายการ</div><textarea id="sClients"></textarea></div>
+      <div class="card"><h2>รายชื่อลูกค้า / จ็อบ</h2><div class="field" style="margin-bottom:8px"><label class="hint" for="sDivSel">แก้ไขรายชื่อของ</label><select id="sDivSel"></select></div><div class="hint" style="margin-bottom:6px">บรรทัดละ 1 ชื่อ · พนักงานแต่ละสายเห็นเฉพาะรายชื่อของสายตัวเอง (สายที่ยังว่างจะเห็นรายชื่อ “ทั่วไป”) · รวมทุกสายไม่เกิน 489 รายการ</div><textarea id="sClients"></textarea></div>
       <div class="card"><h2>Service / Period</h2><div class="hint" style="margin-bottom:6px">บรรทัดละ 1 รายการ (เช่น 69YE, Q1/69)</div><textarea id="sPeriods"></textarea></div>
     </div>
     <div class="card"><h2>วันหยุดนักขัตฤกษ์ / วันหยุดตามประกาศ</h2>
@@ -321,10 +325,19 @@ table.adm td.l,table.adm th.l{text-align:left}
   </section>
 </main>
 </div>
+<div id="profModal"><div class="box">
+  <h2>ยืนยันข้อมูลพนักงาน</h2><p>กรุณาตรวจสอบอีเมลและเลือกสายงานของคุณ ระบบจะแสดงรายชื่อลูกค้าเฉพาะสายงานนี้</p>
+  <label for="pmEmail">อีเมล</label><input id="pmEmail" readonly>
+  <label for="pmName">ชื่อ-นามสกุล</label><input id="pmName" autocomplete="off">
+  <label for="pmDiv">สายงาน (Division)</label><select id="pmDiv"></select>
+  <div class="err" id="pmErr"></div>
+  <button class="btn primary" id="pmOk">ยืนยัน</button>
+</div></div>
 <div id="toast"></div>
 
 <script src="vendor/jszip.min.js"></script>
 <script src="vendor/xlsx.full.min.js"></script>
+<script src="vendor/exceljs.min.js"></script>
 <script type="module" src="js/app.js"></script>
 </body>
 </html>
