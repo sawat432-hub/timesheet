@@ -33,6 +33,10 @@ const titleLine = t => `${S.company} — ${t} · ${view.name||''} · ${view.divi
   try { be = await createBackend(); }
   catch(e){ $('#login').style.display='flex'; $('#lgErr').textContent = 'เริ่มระบบไม่สำเร็จ: ' + e.message; return; }
   $('#login').style.display = 'flex';
+  { const dl = C.mergeSettings().divisions; let last = ''; try { last = sessionStorage.getItem('ts_pickdiv') || ''; } catch(e){}
+    $('#lgDiv').innerHTML = '<option value="">— เลือกสายงาน —</option>' + dl.map(x => `<option value="${esc(x.name)}">${esc(x.code + ' ' + x.name)}</option>`).join('');
+    $('#lgDiv').value = last;
+    $('#lgDiv').onchange = () => { try { sessionStorage.setItem('ts_pickdiv', $('#lgDiv').value); } catch(e){} }; }
   $('#lgFirebase').style.display = be.mode==='firebase' ? '' : 'none';
   $('#lgDemo').style.display = be.mode==='demo' ? '' : 'none';
   $('#modebar').style.display = be.mode==='demo' ? '' : 'none';
@@ -51,6 +55,12 @@ async function enter(u){
   try { const cfg = await be.getConfig(); S = C.mergeSettings(cfg); } catch(e){ S = C.mergeSettings(); }
   view.uid = u.uid; view.name = u.name || u.email; view.division = u.division || '';
   $('#login').style.display = 'none'; $('#app').style.display = 'block';
+  if (!C.findDiv(S, u.division)) {
+    const pick = C.findDiv(S, ($('#lgDiv') && $('#lgDiv').value) || '');
+    if (pick) { try { await be.saveProfile(u.uid, {name:u.name || u.email, division:pick.name}); u.division = pick.name; } catch(e){ console.error(e); } }
+    if (!C.findDiv(S, u.division)) await askProfile(u);
+  }
+  view.name = u.name || u.email; view.division = u.division || '';
   $('#hCompany').textContent = S.company;
   $('#uName').textContent = u.name || u.email; $('#uRole').textContent = isAdmin() ? 'แอดมิน' : 'พนักงาน';
   $('#uPhoto').src = u.photo || ''; $('#uPhoto').style.display = u.photo ? '' : 'none';
@@ -81,7 +91,7 @@ async function loadView(){
   meta = {status: d?.status || 'draft', approvedBy: d?.approvedBy || '', approvedAt: d?.approvedAt || '', submittedAt: d?.submittedAt || ''};
   if (!isSelf()){ const p = users.find(x => x.uid===view.uid); if (p){ view.name = d?.name || p.name || p.email; view.division = d?.division ?? p.division ?? ''; } }
   else { view.name = user.name || user.email; view.division = user.division || ''; }
-  $('#pName').value = view.name; $('#pDiv').value = view.division;
+  $('#pName').value = view.name; fillDivSel(view.division);
   $('#pName').disabled = $('#pDiv').disabled = !isSelf();
   $('#hCompany').textContent = S.company;
   applyState(); renderReport(); renderOthers();
@@ -138,12 +148,31 @@ async function onPeriodChange(){
 }
 $('#mSel').onchange = $('#yIn').onchange = onPeriodChange;
 $('#empSel').onchange = async () => { await flushSave(); view.uid = $('#empSel').value; await loadView(); };
+function divOptions(cur){
+  const d = C.findDiv(S, cur);
+  return `<option value="">— เลือกสายงาน —</option>` + S.divisions.map(x => `<option value="${esc(x.name)}">${esc(x.code + ' ' + x.name)}</option>`).join('') + (cur && !d ? `<option value="${esc(cur)}">${esc(cur)}</option>` : '');
+}
+function fillDivSel(cur){ const el = $('#pDiv'), d = C.findDiv(S, cur); el.innerHTML = divOptions(cur); el.value = d ? d.name : (cur || ''); }
+/* หน้าต่างยืนยันข้อมูลพนักงาน (แสดงเมื่อยังไม่ได้เลือกสายงาน) */
+function askProfile(u){
+  return new Promise(resolve => {
+    $('#pmEmail').value = u.email || ''; $('#pmName').value = u.name || ''; $('#pmDiv').innerHTML = divOptions(''); $('#pmDiv').value = ''; $('#pmErr').textContent = '';
+    $('#profModal').style.display = 'flex';
+    $('#pmOk').onclick = async () => {
+      const name = $('#pmName').value.trim(), div = $('#pmDiv').value;
+      if (!name) return $('#pmErr').textContent = 'กรุณากรอกชื่อ-นามสกุล';
+      if (!div) return $('#pmErr').textContent = 'กรุณาเลือกสายงาน';
+      try { await be.saveProfile(u.uid, {name, division:div}); } catch(e){ return $('#pmErr').textContent = 'บันทึกไม่สำเร็จ: ' + (e.code || e.message); }
+      u.name = name; u.division = div; $('#profModal').style.display = 'none'; resolve();
+    };
+  });
+}
 $('#pName').onchange = $('#pDiv').onchange = async () => {
   if (!isSelf()) return;
-  view.name = $('#pName').value.trim() || view.name; view.division = $('#pDiv').value.trim();
+  view.name = $('#pName').value.trim() || view.name; view.division = $('#pDiv').value;
   user.name = view.name; user.division = view.division; $('#uName').textContent = user.name;
   try { await be.saveProfile(user.uid, {name:view.name, division:view.division}); } catch(e){ toast('บันทึกโปรไฟล์ไม่สำเร็จ'); }
-  if (docExists) scheduleSave(); renderOthers();
+  if (docExists) scheduleSave(); renderOthers(); renderReport();
 };
 
 /* ================= TAB ================= */
@@ -159,7 +188,7 @@ function renderOthers(){ if (activeTab==='sheet') renderSheet(); if (activeTab==
 /* ================= บันทึกเวลา ================= */
 function optHTML(opts){ return opts.map(o => `<option>${esc(o)}</option>`).join(''); }
 function clientOptions(){
-  return `<option value=""></option><optgroup label="งานลูกค้า / จ็อบ">${optHTML(S.clients)}</optgroup><optgroup label="งานที่ไม่เรียกเก็บ / ลา">${optHTML(C.NONCHARGE.map(x=>x[0]))}</optgroup><optgroup label="วันหยุด">${optHTML(C.DAYOFF_LABELS)}</optgroup>`;
+  return `<option value=""></option><optgroup label="งานลูกค้า / จ็อบ">${optHTML(C.clientsFor(S, view.division))}</optgroup><optgroup label="งานที่ไม่เรียกเก็บ / ลา">${optHTML(C.NONCHARGE.map(x=>x[0]))}</optgroup><optgroup label="วันหยุด">${optHTML(C.DAYOFF_LABELS)}</optgroup>`;
 }
 function setSel(sel, v){
   if (v && ![...sel.options].some(o => o.value===v)){ const o=document.createElement('option'); o.textContent=v; sel.appendChild(o); }
@@ -283,9 +312,9 @@ async function renderAdmin(){
   const tb = $('#tAdm tbody');
   tb.innerHTML = users.map(u => {
     const d = byUid.get(u.uid), st = d ? (d.status||'draft') : 'none';
-    const hrs = d ? C.factsOf(S, d).reduce((a,f) => a+f.mins, 0)/60 : 0;
+    const hrs = d ? C.payDays(S, d).reduce((a,f) => a+f.work, 0)/60 : 0;
     const upd = d?.updatedAt ? new Date(d.updatedAt).toLocaleString('th-TH', {dateStyle:'short', timeStyle:'short'}) : '';
-    return `<tr data-uid="${esc(u.uid)}"><td class="l">${esc(u.name||'')}<div class="hint">${esc(u.division||'')}</div></td><td class="l">${esc(u.email||'')}</td>
+    return `<tr data-uid="${esc(u.uid)}"><td class="l">${esc(u.name||'')}<div class="hint">${esc(C.divLabel(S, u.division))}</div></td><td class="l">${esc(u.email||'')}</td>
       <td><select data-a="role" ${u.uid===user.uid?'disabled title="ไม่สามารถเปลี่ยนสิทธิ์ของตัวเอง"':''}><option value="user"${u.role!=='admin'?' selected':''}>พนักงาน</option><option value="admin"${u.role==='admin'?' selected':''}>แอดมิน</option></select></td>
       <td><span class="chip ${st}">${ST[st]}</span></td><td class="num">${d?C.f2(hrs):''}</td><td>${esc(upd)}</td>
       <td class="act"><button class="btn sm" data-a="open">เปิดดู/แก้ไข</button> ${d?'<button class="btn sm" data-a="xlsx">Excel</button> <button class="btn sm" data-a="appr">'+(st==='approved'?'ยกเลิกอนุมัติ':'อนุมัติ')+'</button>':''}</td></tr>`;
@@ -309,6 +338,38 @@ $('#tAdm').addEventListener('change', async e => {
   try { await be.setRole(uid, e.target.value); toast('เปลี่ยนสิทธิ์แล้ว'); } catch(err){ toast('เปลี่ยนสิทธิ์ไม่สำเร็จ: ' + (err.code||err.message)); renderAdmin(); }
 });
 $('#admRefresh').onclick = renderAdmin;
+
+/* ----- สำรอง / นำเข้าข้อมูล (JSON) ----- */
+$('#admBackup').onclick = async () => {
+  try {
+    const data = await be.exportAll();
+    const pack = {app:'timesheet-backup', version:1, exportedAt:new Date().toISOString(), exportedBy:user.email || user.name, ...data};
+    const day = new Date().toISOString().slice(0,10);
+    download(`timesheet-backup_${day}.json`, JSON.stringify(pack, null, 1), 'application/json');
+    toast(`สำรองข้อมูลแล้ว: พนักงาน ${data.users.length} คน · ใบลงเวลา ${data.sheets.length} เดือน`, 4000);
+  } catch(e){ toast('สำรองข้อมูลไม่สำเร็จ: ' + (e.code||e.message), 5000); }
+};
+function cleanBackup(obj){
+  if (!obj || obj.app !== 'timesheet-backup' || !Array.isArray(obj.users) || !Array.isArray(obj.sheets)) throw new Error('ไม่ใช่ไฟล์สำรองของระบบนี้');
+  const users = obj.users.filter(u => u && typeof u.uid === 'string' && u.uid && !u.uid.includes('/')).map(u => ({...u, role: u.role === 'admin' ? 'admin' : 'user'}));
+  const sheets = obj.sheets.filter(d => d && typeof d.uid === 'string' && d.uid && !d.uid.includes('/') && Number.isInteger(d.year) && Number.isInteger(d.month) && d.month >= 1 && d.month <= 12 && Array.isArray(d.entries));
+  if (users.length !== obj.users.length || sheets.length !== obj.sheets.length) throw new Error(`ไฟล์มีรายการที่รูปแบบไม่ถูกต้อง (พนักงาน ${obj.users.length-users.length} · ใบลงเวลา ${obj.sheets.length-sheets.length} รายการ) จึงไม่นำเข้า`);
+  const config = obj.config && typeof obj.config === 'object' ? obj.config : null;
+  return {users, sheets, config};
+}
+$('#admRestore').onclick = () => $('#admFile').click();
+$('#admFile').onchange = async e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  try {
+    const pack = cleanBackup(JSON.parse(await f.text()));
+    const when = pack.exportedAt || '';
+    if (!confirm(`นำเข้าข้อมูลจากไฟล์ ${f.name}\nพนักงาน ${pack.users.length} คน · ใบลงเวลา ${pack.sheets.length} เดือน${pack.config ? ' · การตั้งค่า' : ''}\n\nรายการที่ซ้ำในระบบจะถูกเขียนทับด้วยข้อมูลในไฟล์ (รายการที่ไม่มีในไฟล์จะไม่ถูกลบ)\nยืนยันนำเข้า?`)) return;
+    const n = await be.importAll(pack);
+    toast(`นำเข้าแล้ว ${n} รายการ`, 4000);
+    const cfg = await be.getConfig().catch(() => null); S = C.mergeSettings(cfg); $('#hCompany').textContent = S.company;
+    repDocs = null; await loadView(); renderAdmin();
+  } catch(err){ toast('นำเข้าไม่สำเร็จ: ' + (err.code || err.message), 6000); }
+};
 $('#admZip').onclick = async () => {
   try {
     const docs = (await be.listSheets({year:view.year})).filter(d => d.month===view.month);
@@ -321,9 +382,16 @@ $('#admZip').onclick = async () => {
 };
 
 /* ================= ตั้งค่า (แอดมิน) ================= */
+let curDiv = '';
+const linesOf = id => [...new Set($(id).value.split('\n').map(s => s.trim()).filter(Boolean))];
+const listFor = key => key ? S.divisions.find(d => d.name === key).clients : S.clients;
+function commitClients(){ const l = linesOf('#sClients'); if (curDiv) S.divisions.find(d => d.name === curDiv).clients = l; else S.clients = l; }
+$('#sDivSel').onchange = () => { commitClients(); curDiv = $('#sDivSel').value; $('#sClients').value = listFor(curDiv).join('\n'); };
 function fillSettings(){
   $('#sCompany').value = S.company; $('#sStd').value = S.stdHours; $('#sLunch').value = S.lunchHours;
-  $('#sBreaks').value = S.breaks.join('\n'); $('#sClients').value = S.clients.join('\n'); $('#sPeriods').value = S.periods.join('\n'); renderHol();
+  $('#sBreaks').value = S.breaks.join('\n'); $('#sPeriods').value = S.periods.join('\n');
+  $('#sDivSel').innerHTML = `<option value="">ทั่วไป (ไม่ระบุสายงาน / สายที่ยังไม่มีรายชื่อ)</option>` + S.divisions.map(d => `<option value="${esc(d.name)}">${esc(d.code + ' ' + d.name)}</option>`).join('');
+  curDiv = ''; $('#sDivSel').value = ''; $('#sClients').value = S.clients.join('\n'); renderHol();
 }
 function renderHol(){
   const hs = [...S.holidays].sort((a,b) => a.date.localeCompare(b.date));
@@ -335,114 +403,128 @@ $('#bAddHol').onclick = () => { let k = C.ymd(C.ceYear(view.year), view.month, 1
 const lines = id => [...new Set($(id).value.split('\n').map(s => s.trim()).filter(Boolean))];
 $('#bSaveSet').onclick = async () => {
   S.company = $('#sCompany').value.trim() || C.DEFAULT_SETTINGS.company; S.stdHours = +$('#sStd').value || 8; S.lunchHours = +$('#sLunch').value || 0;
-  S.breaks = lines('#sBreaks'); S.clients = lines('#sClients').slice(0, 489); S.periods = lines('#sPeriods').slice(0, 190); S.holidays = S.holidays.filter(h => h.date);
+  commitClients();
+  if (C.allClients(S).length > 489) return toast('รายชื่อลูกค้ารวมทุกสายเกิน 489 รายการ (ข้อจำกัดของฟอร์ม Excel)', 4000);
+  S.breaks = lines('#sBreaks'); S.periods = lines('#sPeriods').slice(0, 190); S.holidays = S.holidays.filter(h => h.date);
   try { await be.saveConfig(S); const el = $('#savedSet'); el.classList.add('on'); setTimeout(() => el.classList.remove('on'), 1600); $('#hCompany').textContent = S.company; renderReport(); renderOthers(); }
   catch(e){ toast('บันทึกไม่สำเร็จ: ' + (e.code||e.message), 4000); }
 };
 
-/* ================= รายงานวิเคราะห์ (รายจ็อบ / รายปี / รายพนักงาน …) ================= */
-const DIMS = {
-  job:{label:'จ็อบ / ลูกค้า', key:f => f.client}, employee:{label:'พนักงาน', key:f => f.name}, service:{label:'Service / Period', key:f => f.service},
-  month:{label:'เดือน', key:f => f.month}, category:{label:'ประเภทงาน', key:f => f.cat}, none:{label:'รวม', key:() => 'รวม'}
+/* ================= รายงานค่าแรง / ค่าล่วงเวลา ================= */
+const PAY_COLS = [['work','ชม.ทำงานรวม'], ['reg','ค่าแรงปกติ (วันปกติ ≤ 8 ชม.)'], ['ot1','ล่วงเวลา 1 เท่า (วันหยุด 8 ชม.แรก)'], ['ot15','ล่วงเวลา 1.5 เท่า (วันปกติ เกิน 8 ชม.)'], ['ot3','ล่วงเวลา 3 เท่า (วันหยุด เกิน 8 ชม.)']];
+/* หัวข้อ "แสดงแยกตาม": แต่ละหัวข้อ = แถวพนักงาน (หรือลูกค้า) × คอลัมน์เดือน; "พนักงาน" = รายงานค่าแรง/ล่วงเวลา; "ทุกหัวข้อ" = ทุกหัวข้อเป็นคอลัมน์ */
+const ITEMS = {
+  employee:{label:'พนักงาน'}, client:{label:'รายชื่อลูกค้า'},
+  office:{label:'OFFICE', f:s => s.nonRows[0].total}, sick:{label:'ลาป่วย', f:s => s.nonRows[1].total}, vacation:{label:'ลาพักร้อน', f:s => s.nonRows[2].total}, training:{label:'อบรม', f:s => s.nonRows[3].total},
+  otacc:{label:'ลา OT สะสม', f:s => s.nonRows[4].total}, personal:{label:'ลากิจ', f:s => s.nonRows[5].total},
+  ot:{label:'OVER TIME', f:s => s.tC}, extra:{label:'EXTRA HOUR', f:s => s.tD}, charge:{label:'TOTAL CHARGE', f:s => s.tA},
+  nonch:{label:'TOTAL NON CHARGE', f:s => s.tB}, standard:{label:'STANDARD', f:s => s.tS}, all:{label:'ทุกหัวข้อ'}
 };
-const MEAS = {
-  charge:{label:'ชั่วโมงเรียกเก็บ (Charge)', val:f => f.cat.startsWith('เรียกเก็บ') ? f.mins : 0},
-  noncharge:{label:'ชั่วโมง Non-charge / ลา', val:f => f.cat.startsWith('Non-charge') ? f.mins : 0},
-  total:{label:'ชั่วโมงทั้งหมด', val:f => f.mins},
-  ot:{label:'ชั่วโมง O.T.', val:f => f.ot==='O.T.' ? f.otMins : 0},
-  extra:{label:'ชั่วโมง Extra Hours', val:f => f.ot==='Extra Hours' ? f.otMins : 0}
-};
-const PRESETS = [
-  ['รายจ็อบ × รายเดือน', {meas:'charge', row:'job', col:'month'}],
-  ['รายปี: พนักงาน × เดือน', {meas:'total', row:'employee', col:'month'}],
-  ['พนักงาน × จ็อบ', {meas:'charge', row:'employee', col:'job'}],
-  ['จ็อบ × พนักงาน', {meas:'charge', row:'job', col:'employee'}],
-  ['จ็อบ × Period', {meas:'charge', row:'job', col:'service'}],
-  ['สรุปวันลา / Non-charge', {meas:'noncharge', row:'employee', col:'job'}],
-  ['O.T. พนักงาน × เดือน', {meas:'ot', row:'employee', col:'month'}],
-  ['ภาพรวมรายเดือน', {meas:'total', row:'month', col:'category'}]
-];
-let repDocs = null, repYear = null, repFacts = [], lastPivot = null;
+const ALL_KEYS = ['office','sick','vacation','training','otacc','personal','ot','extra','charge','nonch','standard'];
+let repDocs = null, repYear = null, lastRep = null;
 function initReportControls(){
-  const dimOpts = keys => keys.map(k => `<option value="${k}">${DIMS[k].label}</option>`).join('');
-  $('#rRow').innerHTML = dimOpts(['job','employee','service','month','category']);
-  $('#rCol').innerHTML = dimOpts(['month','job','employee','service','category','none']);
   const mo = C.MONTHS.map((m,i) => `<option value="${i+1}">${m}</option>`).join('');
   $('#rM1').innerHTML = $('#rM2').innerHTML = mo; $('#rM1').value = 1; $('#rM2').value = 12;
-  $('#rRow').value = 'job'; $('#rCol').value = 'month'; $('#rMeas').value = 'charge';
-  $('#presets').innerHTML = PRESETS.map((p,i) => `<button data-i="${i}">${esc(p[0])}</button>`).join('');
-  $('#rYear').value = view.year;
-  repDocs = null; lastPivot = null; $('#repWrap').innerHTML = '<div style="padding:24px;color:var(--muted)">เลือกเงื่อนไขแล้วกด “สร้างรายงาน”</div>';
+  $('#rGrp').innerHTML = Object.entries(ITEMS).map(([k,v]) => `<option value="${k}">${v.label}</option>`).join(''); $('#rGrp').value = 'employee'; $('#rYear').value = view.year;
+  repDocs = null; lastRep = null; $('#repWrap').innerHTML = '<div style="padding:24px;color:var(--muted)">เลือกเงื่อนไขแล้วกด “สร้างรายงาน”</div>';
   $('#rEmp').innerHTML = isAdmin() ? '<option value="">ทุกคน</option>' : `<option>${esc(user.name||user.email)}</option>`;
-  $('#rJob').innerHTML = $('#rSvc').innerHTML = '<option value="">ทั้งหมด</option>';
 }
 function syncReportControls(){ if (!repDocs) $('#rYear').value = view.year; }
-$('#presets').onclick = e => {
-  const b = e.target.closest('button'); if (!b) return; const p = PRESETS[+b.dataset.i][1];
-  $('#rMeas').value = p.meas; $('#rRow').value = p.row; $('#rCol').value = p.col;
-  $$('#presets button').forEach(x => x.classList.toggle('on', x===b)); runReport();
-};
 async function loadReportData(force){
   const y = +$('#rYear').value || view.year;
-  if (force || !repDocs || repYear !== y){
-    repDocs = await be.listSheets({year:y, uid: isAdmin() ? undefined : user.uid}); repYear = y;
-  }
-  repFacts = repDocs.flatMap(d => C.factsOf(S, d));
+  if (force || !repDocs || repYear !== y){ repDocs = await be.listSheets({year:y, uid: isAdmin() ? undefined : user.uid}); repYear = y; }
   if (isAdmin()){
-    const names = [...new Set(repFacts.map(f => f.name))].sort((a,b) => a.localeCompare(b,'th'));
+    const names = [...new Set(repDocs.map(d => d.name || d.uid))].sort((a,b) => a.localeCompare(b,'th'));
     const keep = $('#rEmp').value; $('#rEmp').innerHTML = `<option value="">ทุกคน</option>` + names.map(x => `<option>${esc(x)}</option>`).join(''); $('#rEmp').value = names.includes(keep) ? keep : '';
   }
-  const fill = (id, arr, keep) => { $(id).innerHTML = `<option value="">ทั้งหมด</option>` + arr.map(x => `<option>${esc(x)}</option>`).join(''); $(id).value = arr.includes(keep) ? keep : ''; };
-  fill('#rJob', [...new Set(repFacts.map(f => f.client))].sort((a,b) => a.localeCompare(b,'th',{numeric:true})), $('#rJob').value);
-  fill('#rSvc', [...new Set(repFacts.map(f => f.service))].sort(), $('#rSvc').value);
-}
-function pivot(facts, meas, rowDim, colDim){
-  const val = MEAS[meas].val, rk = DIMS[rowDim].key, ck = DIMS[colDim].key;
-  const cells = new Map(), rt = new Map(), ct = new Map(); let grand = 0;
-  facts.forEach(f => {
-    const v = val(f); if (!v) return; const r = rk(f), c = ck(f);
-    if (!cells.has(r)) cells.set(r, new Map());
-    cells.get(r).set(c, (cells.get(r).get(c)||0) + v); rt.set(r, (rt.get(r)||0)+v); ct.set(c, (ct.get(c)||0)+v); grand += v;
-  });
-  const order = (m, dim) => [...m.keys()].sort((a,b) => dim==='month' ? a-b : (m.get(b)-m.get(a)) || String(a).localeCompare(String(b),'th',{numeric:true}));
-  return {rows: order(rt,rowDim), cols: order(ct,colDim), cells, rt, ct, grand, rowDim, colDim, meas};
 }
 async function runReport(){
   try { await loadReportData(false); } catch(e){ return toast('โหลดข้อมูลไม่สำเร็จ: ' + (e.code||e.message), 4000); }
-  const m1 = +$('#rM1').value, m2 = +$('#rM2').value, emp = $('#rEmp').value, job = $('#rJob').value, svc = $('#rSvc').value;
-  const facts = repFacts.filter(f => f.month>=m1 && f.month<=m2 && (!emp || f.name===emp) && (!job || f.client===job) && (!svc || f.service===svc));
-  const meas = $('#rMeas').value, rowDim = $('#rRow').value, colDim = $('#rCol').value;
-  const p = lastPivot = pivot(facts, meas, rowDim, colDim);
-  const lbl = (dim, k) => dim==='month' ? C.MONTHS[k-1] : k;
-  const hrs = v => C.f2(v/60);
-  let h = `<table class="piv"><thead><tr><th class="rl">${esc(DIMS[rowDim].label)}</th>`;
-  if (colDim!=='none') p.cols.forEach(c => h += `<th>${esc(lbl(colDim,c))}</th>`);
-  h += `<th>รวม (ชม.)</th></tr></thead><tbody>`;
-  const max = Math.max(1, ...p.rows.map(r => p.rt.get(r)));
-  p.rows.forEach(r => {
-    h += `<tr><td class="rl">${esc(lbl(rowDim,r))}</td>`;
-    if (colDim!=='none') p.cols.forEach(c => { const v = p.cells.get(r).get(c); h += v ? `<td class="n">${hrs(v)}</td>` : `<td class="n z">·</td>`; });
-    h += `<td class="tt"><div class="bar" style="width:${Math.round(p.rt.get(r)/max*100)}%"></div><span>${hrs(p.rt.get(r))}</span></td></tr>`;
-  });
-  if (!p.rows.length) h += `<tr><td class="rl" colspan="${p.cols.length+2}" style="color:var(--muted);padding:18px">ไม่พบข้อมูลตามเงื่อนไขนี้</td></tr>`;
-  h += `</tbody><tfoot><tr><td class="rl" style="background:var(--brand-soft)">รวมทั้งหมด</td>`;
-  if (colDim!=='none') p.cols.forEach(c => h += `<td class="n">${hrs(p.ct.get(c))}</td>`);
-  h += `<td class="n">${hrs(p.grand)}</td></tr></tfoot></table>`;
+  const m1 = +$('#rM1').value, m2 = +$('#rM2').value, emp = $('#rEmp').value, key = $('#rGrp').value, it = ITEMS[key];
+  const docs = repDocs.filter(d => d.month>=m1 && d.month<=m2 && (!emp || (d.name||d.uid)===emp));
+  const cmpS = (a,b) => String(a).localeCompare(String(b),'th');
+  const months = []; for (let m=m1; m<=m2; m++) months.push(m);
+  let head, cols, rows = [];            // rows: {label:[...], v:[ชั่วโมง...]}
+  const sums = new Map(); docs.forEach(d => sums.set(d, C.summarize(S, d.year, d.month, C.toRowsByDay(d.entries, C.daysInMonth(d.year, d.month)))));
+  if (key === 'employee'){
+    head = ['พนักงาน']; cols = PAY_COLS.map(c => c[1]); const map = new Map();
+    docs.flatMap(d => C.payDays(S, d)).forEach(d => { const n = d.name; let r = map.get(n); if (!r){ r = {label:[n], v:PAY_COLS.map(() => 0)}; map.set(n, r); } PAY_COLS.forEach(([f], i) => r.v[i] += d[f]/60); });
+    rows = [...map.values()].sort((a,b) => cmpS(a.label[0], b.label[0]));
+  } else if (key === 'client'){
+    head = ['รายชื่อลูกค้า']; cols = [...months.map(m => C.MONTHS[m-1]), 'รวม']; const map = new Map();
+    docs.forEach(d => sums.get(d).clientRows.forEach(c => { let r = map.get(c.code); if (!r){ r = {label:[c.code], v:months.map(() => 0)}; map.set(c.code, r); } r.v[months.indexOf(d.month)] += c.total; }));
+    rows = [...map.values()].sort((a,b) => cmpS(a.label[0], b.label[0])).map(r => ({...r, v:[...r.v, r.v.reduce((x,y) => x+y, 0)]}));
+  } else if (key === 'all'){
+    head = ['พนักงาน']; cols = ALL_KEYS.map(k => ITEMS[k].label); const map = new Map();
+    docs.forEach(d => { const n = d.name || d.uid; let r = map.get(n); if (!r){ r = {label:[n], v:ALL_KEYS.map(() => 0)}; map.set(n, r); } ALL_KEYS.forEach((k, i) => r.v[i] += ITEMS[k].f(sums.get(d)) || 0); });
+    rows = [...map.values()].sort((a,b) => cmpS(a.label[0], b.label[0]));
+  } else {
+    head = ['พนักงาน']; cols = [...months.map(m => C.MONTHS[m-1]), 'รวม']; const map = new Map();
+    docs.forEach(d => { const n = d.name || d.uid; let r = map.get(n); if (!r){ r = {label:[n], v:months.map(() => 0)}; map.set(n, r); } r.v[months.indexOf(d.month)] += it.f(sums.get(d)) || 0; });
+    rows = [...map.values()].sort((a,b) => cmpS(a.label[0], b.label[0])).map(r => ({...r, v:[...r.v, r.v.reduce((x,y) => x+y, 0)]}));
+  }
+  const tot = cols.map((_, i) => rows.reduce((a, r) => a + r.v[i], 0));
+  const hrs = v => Math.abs(v) > 1e-9 ? C.f2(v) : '·';
+  let h = `<table class="piv"><thead><tr>${head.map(x => `<th class="rl">${x}</th>`).join('')}${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead><tbody>`;
+  rows.forEach(r => { h += `<tr>${r.label.map(x => `<td class="rl">${esc(x)}</td>`).join('')}${r.v.map(v => `<td class="n${Math.abs(v) > 1e-9 ? '' : ' z'}">${hrs(v)}</td>`).join('')}</tr>`; });
+  if (!rows.length) h += `<tr><td class="rl" colspan="${head.length+cols.length}" style="color:var(--muted);padding:18px">ไม่พบข้อมูลตามเงื่อนไขนี้</td></tr>`;
+  h += `</tbody><tfoot><tr><td class="rl" colspan="${head.length}" style="background:var(--brand-soft)">รวมทั้งหมด (ชม.)</td>${tot.map(v => `<td class="n">${C.f2(v)}</td>`).join('')}</tr></tfoot></table>`;
   $('#repWrap').innerHTML = h;
-  const scope = `ปี ${$('#rYear').value} เดือน ${C.MONTHS[m1-1]}–${C.MONTHS[m2-1]}` + (emp ? ` · ${emp}` : '') + (job ? ` · จ็อบ ${job}` : '') + (svc ? ` · ${svc}` : '');
-  p.title = `${MEAS[meas].label} — ${DIMS[rowDim].label} × ${DIMS[colDim].label}`; p.scope = scope;
-  $('#ptRep').textContent = `${S.company} — ${p.title} · ${scope}`;
-  $('#repNote').textContent = `${p.title} · ${scope} · หน่วย: ชั่วโมง · จากข้อมูล ${repDocs.length} เอกสารรายเดือน`;
+  const scope = `ปี ${$('#rYear').value} เดือน ${C.MONTHS[m1-1]}–${C.MONTHS[m2-1]}` + (emp ? ` · ${emp}` : '');
+  const title = key === 'employee' ? 'รายงานค่าแรง / ค่าล่วงเวลา — แยกตามพนักงาน' : `รายงานวิเคราะห์ — ${it.label}`;
+  lastRep = {head, cols, rows, tot, scope, title};
+  $('#ptRep').textContent = `${S.company} — ${title} · ${scope}`;
+  $('#repNote').textContent = `${title} · ${scope} · หน่วย: ชั่วโมง · ` + (key === 'employee' ? 'ไม่นับรายการลา · ' : 'ตัวเลขเดียวกับหน้า “สรุปรายเดือน” · ') + `จากข้อมูล ${docs.length} เอกสารรายเดือน`;
 }
-$('#rGo').onclick = () => { $$('#presets button').forEach(x => x.classList.remove('on')); repDocs = null; runReport(); };
+$('#rGo').onclick = () => { repDocs = null; runReport(); };
 $('#rPrint').onclick = () => window.print();
-$('#rXlsx').onclick = () => {
-  const p = lastPivot; if (!p) return toast('กดสร้างรายงานก่อน');
-  const lbl = (dim, k) => dim==='month' ? C.MONTHS[k-1] : k, r2 = v => Math.round(v/60*100)/100;
-  const aoa = [[S.company], [p.title], [p.scope], [], [DIMS[p.rowDim].label, ...(p.colDim!=='none' ? p.cols.map(c => lbl(p.colDim,c)) : []), 'รวม (ชม.)']];
-  p.rows.forEach(r => aoa.push([lbl(p.rowDim,r), ...(p.colDim!=='none' ? p.cols.map(c => r2(p.cells.get(r).get(c)||0)||'') : []), r2(p.rt.get(r))]));
-  aoa.push(['รวมทั้งหมด', ...(p.colDim!=='none' ? p.cols.map(c => r2(p.ct.get(c))) : []), r2(p.grand)]);
-  const X = window.XLSX, ws = X.utils.aoa_to_sheet(aoa); ws['!cols'] = [{wch:28}, ...Array(p.cols.length+1).fill({wch:12})];
-  const wb = X.utils.book_new(); X.utils.book_append_sheet(wb, ws, 'REPORT');
-  X.writeFile(wb, `REPORT_${p.meas}_${p.rowDim}x${p.colDim}_${$('#rYear').value}.xlsx`);
+$('#rXlsx').onclick = async () => {
+  const r = lastRep; if (!r) return toast('กดสร้างรายงานก่อน');
+  if (!window.ExcelJS) return toast('ไม่พบไลบรารีสร้าง Excel');
+  try {
+    const r2 = v => Math.round(v/60*100)/100, NUM = '#,##0.00;-#,##0.00;"–"';
+    const wb = new window.ExcelJS.Workbook(); wb.creator = S.company; wb.created = new Date();
+    const ws = wb.addWorksheet('REPORT', {views:[{state:'frozen', ySplit:5, showGridLines:false}]});
+    const nl = r.head.length, nc = nl + r.cols.length, FONT = {name:'Calibri', size:11};
+    // หัวรายงาน
+    [[S.company, 16, true], [r.title, 12, true], [r.scope + ' · หน่วย: ชั่วโมง', 10, false]].forEach(([t, sz, b], i) => {
+      ws.mergeCells(i+1, 1, i+1, nc); const c = ws.getCell(i+1, 1); c.value = t; c.font = {name:'Calibri', size:sz, bold:b, color:{argb: i===2 ? 'FF595959' : 'FF1F3864'}}; c.alignment = {vertical:'middle', horizontal:'left'};
+    });
+    ws.getRow(1).height = 24; ws.getRow(2).height = 20;
+    // ตาราง
+    const names = [...r.head, ...r.cols];
+    const rows = r.rows.length ? r.rows.map(x => [...x.label, ...x.v.map(v => Math.round(v*100)/100)]) : [['ไม่พบข้อมูล', ...Array(nc-1).fill('').map((_, i) => i < nl-1 ? '' : 0)]];
+    ws.addTable({
+      name:'tblReport', ref:'A5', headerRow:true, totalsRow:true,
+      style:{theme:'TableStyleMedium2', showRowStripes:true},
+      columns: names.map((n, i) => i === 0 ? {name:n, totalsRowLabel:'รวมทั้งหมด (ชม.)'} : i < nl ? {name:n, totalsRowLabel:' '} : {name:n, totalsRowFunction:'sum'}),
+      rows
+    });
+    const first = 5, last = 5 + rows.length + 1;   // ส่วนหัว + ข้อมูล + แถวรวม
+    for (let rr = first; rr <= last; rr++){
+      const row = ws.getRow(rr);
+      for (let cc = 1; cc <= nc; cc++){
+        const c = row.getCell(cc); c.font = {...FONT, bold: rr===first || rr===last};
+        const hdr = rr === first, tot = rr === last, line = {style:'thin', color:{argb:'FFBDD7EE'}};
+        c.border = {top:line, bottom:line, left:line, right:line};
+        c.fill = {type:'pattern', pattern:'solid', fgColor:{argb: hdr ? 'FF1F4E79' : tot ? 'FFDDEBF7' : (rr - first) % 2 === 0 ? 'FFEAF1FA' : 'FFFFFFFF'}};
+        if (hdr) c.font = {...FONT, bold:true, color:{argb:'FFFFFFFF'}};
+        if (tot) c.border = {...c.border, top:{style:'medium', color:{argb:'FF1F4E79'}}};
+        if (rr === first) c.alignment = {vertical:'middle', horizontal: cc <= nl ? 'left' : 'center', wrapText:true};
+        else if (cc <= nl) c.alignment = {vertical:'middle', horizontal:'left'};
+        else { c.numFmt = NUM; c.alignment = {vertical:'middle', horizontal:'right'}; }
+      }
+      row.height = rr === first ? (r.cols.length <= 6 ? 48 : 24) : 20;
+    }
+    // ผลรวมแถวสุดท้าย (ใส่ค่าคำนวณไว้ด้วย เผื่อโปรแกรมที่ไม่คำนวณสูตรทันที)
+    r.cols.forEach((_, i) => { const c = ws.getCell(last, nl + 1 + i); c.value = {formula:`SUBTOTAL(109,${ws.getColumn(nl+1+i).letter}${first+1}:${ws.getColumn(nl+1+i).letter}${last-1})`, result:Math.round(r.tot[i]*100)/100}; });
+    // ความกว้างคอลัมน์
+    ws.columns.forEach((col, i) => { col.width = i < nl ? 30 : 15; });
+    // ตั้งค่าหน้ากระดาษ A4 พอดีความกว้าง
+    ws.pageSetup = {paperSize:9, orientation:'landscape', fitToPage:true, fitToWidth:1, fitToHeight:0, horizontalCentered:true,
+      margins:{left:0.4, right:0.4, top:0.6, bottom:0.6, header:0.3, footer:0.3}, printTitlesRow:'5:5', printArea:`A1:${ws.getColumn(nc).letter}${last}`};
+    ws.headerFooter = {oddFooter:'&L&"Calibri,Regular"&9' + S.company.replace(/&/g, '&&') + '&R&"Calibri,Regular"&9หน้า &P / &N'};
+    const buf = await wb.xlsx.writeBuffer();
+    download(`REPORT_${$('#rGrp').value.toUpperCase()}_${$('#rYear').value}.xlsx`, new Blob([buf], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+  } catch(e){ toast('สร้างไฟล์ Excel ไม่สำเร็จ: ' + e.message, 5000); }
 };

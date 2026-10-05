@@ -16,6 +16,11 @@ export const DEFAULT_SETTINGS = {
   breaks: ['12:00-13:00', '20:00-21:00'],
   clients: Array.from({length: 200}, (_, i) => 'A' + (i + 1)),
   periods: ['69YE', '68YE', 'Q1/69', 'Q2/69', 'Q3/69'],
+  // สายงาน (Division) — รหัส/ชื่อคงที่ ส่วนรายชื่อลูกค้าของแต่ละสายแอดมินกำหนดในแท็บตั้งค่า (ถ้าสายไหนยังว่าง จะใช้รายชื่อทั่วไป)
+  divisions: [
+    {code:'VA01', name:'สายกรแก้ว', clients:[]}, {code:'VA02', name:'สายอภิรักษ์', clients:[]}, {code:'VA03', name:'สายรัชนีกร', clients:[]},
+    {code:'VA04', name:'สายธีรวุฒิ', clients:[]}, {code:'VA05', name:'สายรัตน์ชรินทร์', clients:[]}
+  ],
   holidays: [
     ['2026-01-01','วันขึ้นปีใหม่'],['2026-01-02','วันหยุดพิเศษ (มติ ครม.)'],['2026-03-03','วันมาฆบูชา'],
     ['2026-04-06','วันจักรี'],['2026-04-13','วันสงกรานต์'],['2026-04-14','วันสงกรานต์'],['2026-04-15','วันสงกรานต์'],
@@ -28,7 +33,23 @@ export const DEFAULT_SETTINGS = {
 };
 
 export const clone = o => JSON.parse(JSON.stringify(o));
-export const mergeSettings = s => Object.assign(clone(DEFAULT_SETTINGS), s || {});
+/* จับคู่รายชื่อลูกค้าที่บันทึกไว้กับสายงานด้วย "ชื่อสาย" (ไม่ใช้รหัส เพราะรหัสเคยถูกสลับลำดับ) */
+export const mergeSettings = s => {
+  const m = Object.assign(clone(DEFAULT_SETTINGS), s || {});
+  const saved = Array.isArray(s && s.divisions) ? s.divisions : [];
+  m.divisions = clone(DEFAULT_SETTINGS.divisions).map(d => { const o = saved.find(x => x && x.name === d.name); return {...d, clients: o && Array.isArray(o.clients) ? o.clients : []}; });
+  return m;
+};
+/** หาสายงานจากรหัส (VA03) หรือชื่อ (สายรัชนีกร / VA03 สายรัชนีกร) */
+export const findDiv = (S, v) => {
+  const k = String(v||'').trim().toLowerCase(); if (!k) return null;
+  return (S.divisions||[]).find(d => k === d.code.toLowerCase() || k === d.name.toLowerCase() || k === (d.code + ' ' + d.name).toLowerCase()) || null;
+};
+export const divLabel = (S, v) => { const d = findDiv(S, v); return d ? `${d.code} ${d.name}` : String(v||''); };
+export const divName = (S, v) => { const d = findDiv(S, v); return d ? d.name : String(v||''); };
+export const allClients = S => [...new Set([...(S.clients||[]), ...(S.divisions||[]).flatMap(d => d.clients||[])])];
+/** รายชื่อลูกค้าที่พนักงานสายงานนี้เห็น (สายที่ยังไม่มีรายชื่อ/ไม่ระบุสาย -> รายชื่อทั่วไป) */
+export const clientsFor = (S, division) => { const d = findDiv(S, division); return d && d.clients.length ? d.clients : (S.clients||[]); };
 
 /* ---------- เวลา ---------- */
 export function parseTime(str){
@@ -95,7 +116,7 @@ export function summarize(S, be, m, rowsByDay){
   allRows.forEach(x => { if (x.m!=null) dayTot[x.d] += x.m/60; });
   const sumFor = code => { const v=Array(n+1).fill(0); allRows.forEach(x => { if (x.m!=null && x.r.client===code) v[x.d] += x.m/60; }); return v; };
   const used = new Set(allRows.filter(x => x.r.client).map(x => x.r.client));
-  const clientRows = S.clients.filter(c => used.has(c)).map((c,i) => {
+  const clientRows = allClients(S).filter(c => used.has(c)).map((c,i) => {
     const first = allRows.find(x => x.r.client===c && x.r.service);
     const v = sumFor(c);
     return {no:i+1, code:c, period:first ? first.r.service : '', v, total:v.slice(1).reduce((a,b)=>a+b,0)};
@@ -142,31 +163,23 @@ export function otRows(S, be, m, rowsByDay, type){
   return out;
 }
 
-/* ---------- ข้อมูลสำหรับรายงานวิเคราะห์ (รายจ็อบ/รายปี ฯลฯ) ---------- */
-export function categoryOf(client){
-  if (!client) return 'ไม่ระบุ';
-  if (NONCHARGE.some(x => x[0]===client)) return 'Non-charge / ลา';
-  if (DAYOFF_LABELS.includes(client)) return 'วันหยุด';
-  return 'เรียกเก็บ (Charge)';
-}
-/** doc: {uid,name,year,month,entries[]} -> facts[] (1 รายการต่อแถวที่มีชั่วโมง) */
-export function factsOf(S, doc){
-  const n = daysInMonth(doc.year, doc.month);
-  const rows = toRowsByDay(doc.entries, n);
-  const ot = otRows(S, doc.year, doc.month, rows, null);
-  const facts = [];
-  for (let d=1; d<=n; d++) rows[d].forEach((r, i) => {
-    const mins = rowMins(S, r); if (mins==null) return;
-    facts.push({uid:doc.uid, name:doc.name||doc.uid, year:doc.year, month:doc.month, day:d,
-      client:r.client||'(ไม่ระบุ)', service:r.service||'(ไม่ระบุ)', cat:categoryOf(r.client), mins, ot:r.ot||'', otMins:0, _k:d+'#'+i});
-  });
-  // ใส่ otMins ให้แถวที่ตรงกัน (วัน + ลำดับ)
-  const perDay = {};
-  ot.forEach(o => { (perDay[o.d] = perDay[o.d] || []).push(o); });
+/* ---------- รายงานค่าแรง / ค่าล่วงเวลา ----------
+   ค่าแรงปกติ   = ชม.ทำงานในวันทำงานปกติ ไม่เกินชั่วโมงมาตรฐาน (8 ชม.)
+   ล่วงเวลา 1 เท่า   = ชม.ทำงานในวันหยุด (เสาร์-อาทิตย์/นักขัตฤกษ์) 8 ชม.แรก
+   ล่วงเวลา 1.5 เท่า = ชม.ทำงานวันทำงานปกติที่เกินชั่วโมงมาตรฐาน
+   ล่วงเวลา 3 เท่า   = ชม.ทำงานวันหยุดหลังจาก 8 ชม.แรก
+   (ไม่นับรายการลา: ลาป่วย/ลาพักร้อน/ลากิจ/ลา OT สะสม)  หน่วยของผลลัพธ์ = นาที */
+export const LEAVE_CODES = ['ลาป่วย', 'ลาพักร้อน', 'ลากิจ', 'ลา OT สะสม'];
+/** doc: {uid,name,year,month,entries[]} -> [{uid,name,year,month,day,off,label,work,reg,ot1,ot15,ot3}] (1 รายการต่อวันที่มีชั่วโมงทำงาน) */
+export function payDays(S, doc){
+  const n = daysInMonth(doc.year, doc.month), rows = toRowsByDay(doc.entries, n), std = (+S.stdHours || 8) * 60, out = [];
   for (let d=1; d<=n; d++){
-    const withOt = facts.filter(f => f.day===d && f.ot);
-    const list = perDay[d] || [];
-    withOt.forEach((f, k) => { f.otMins = list[k] ? list[k].mins : 0; });
+    let work = 0;
+    for (const r of rows[d]){ const m = rowMins(S, r); if (m!=null && !LEAVE_CODES.includes(r.client)) work += m; }
+    if (!work) continue;
+    const k = dayKind(S, doc.year, doc.month, d), off = !!k.off;
+    out.push({uid:doc.uid, name:doc.name||doc.uid, year:doc.year, month:doc.month, day:d, off, label: off ? (k.label || 'วันหยุด') : 'วันทำงาน', work,
+      reg: off ? 0 : Math.min(work, std), ot1: off ? Math.min(work, std) : 0, ot15: off ? 0 : Math.max(0, work-std), ot3: off ? Math.max(0, work-std) : 0});
   }
-  return facts;
+  return out;
 }

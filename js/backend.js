@@ -54,7 +54,20 @@ async function createFirebase(){
       const q = uid ? F.query(c, F.where('year','==',year), F.where('uid','==',uid)) : F.query(c, F.where('year','==',year));
       return (await F.getDocs(q)).docs.map(d => d.data());
     },
-    async deleteSheet(uid, year, month){ await F.deleteDoc(F.doc(db,'timesheets',sheetId(uid,year,month))); }
+    async deleteSheet(uid, year, month){ await F.deleteDoc(F.doc(db,'timesheets',sheetId(uid,year,month))); },
+    async exportAll(){
+      const ser = o => JSON.parse(JSON.stringify(o, (k, v) => v && typeof v.toDate === 'function' ? v.toDate().toISOString() : v));
+      const [u, t, c] = await Promise.all([F.getDocs(users()), F.getDocs(F.collection(db,'timesheets')), F.getDoc(F.doc(db,'config','main'))]);
+      return {users:u.docs.map(d => ser({...d.data(), uid:d.id})), sheets:t.docs.map(d => ser(d.data())), config:c.exists() ? ser(c.data()) : null};
+    },
+    async importAll({users:us=[], sheets:ss=[], config=null}){
+      const ops = [];
+      us.forEach(u => ops.push([F.doc(db,'users',u.uid), strip(u)]));
+      ss.forEach(d => ops.push([F.doc(db,'timesheets',sheetId(d.uid,d.year,d.month)), strip(d)]));
+      if (config) ops.push([F.doc(db,'config','main'), strip(config)]);
+      for (let i=0; i<ops.length; i+=400){ const b = F.writeBatch(db); ops.slice(i, i+400).forEach(([r,d]) => b.set(r, d)); await b.commit(); }
+      return ops.length;
+    }
   };
 }
 
@@ -83,7 +96,14 @@ function createDemo(){
     async getSheet(uid, y, m){ return g('demo_sheets', {})[sheetId(uid,y,m)] || null; },
     async saveSheet(doc){ const all = g('demo_sheets', {}); all[sheetId(doc.uid,doc.year,doc.month)] = {...doc, updatedAt:new Date().toISOString()}; s('demo_sheets', all); },
     async listSheets({year, uid}){ return Object.values(g('demo_sheets', {})).filter(d => d.year === year && (!uid || d.uid === uid)); },
-    async deleteSheet(uid, y, m){ const all = g('demo_sheets', {}); delete all[sheetId(uid,y,m)]; s('demo_sheets', all); }
+    async deleteSheet(uid, y, m){ const all = g('demo_sheets', {}); delete all[sheetId(uid,y,m)]; s('demo_sheets', all); },
+    async exportAll(){ return {users:Object.values(usersMap()), sheets:Object.values(g('demo_sheets', {})), config:g('demo_config', null)}; },
+    async importAll({users:us=[], sheets:ss=[], config=null}){
+      const um = usersMap(); us.forEach(u => { um[u.uid] = u; }); s('demo_users', um);
+      const all = g('demo_sheets', {}); ss.forEach(d => { all[sheetId(d.uid,d.year,d.month)] = d; }); s('demo_sheets', all);
+      if (config) s('demo_config', config);
+      return us.length + ss.length + (config ? 1 : 0);
+    }
   };
 }
 

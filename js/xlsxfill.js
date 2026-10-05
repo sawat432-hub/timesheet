@@ -1,6 +1,6 @@
 /* เติมข้อมูลลงในไฟล์ต้นแบบ template.xlsx (TIMESHEET เดิม) โดยแก้เฉพาะช่องกรอกข้อมูล
    ส่วนหน้าตา สูตร สี เส้นขอบ แผ่นงาน validation ฯลฯ คงเดิมทุกอย่าง — Excel จะคำนวณใหม่เองเมื่อเปิดไฟล์ */
-import { MONTHS, DAYOFF_LABELS, parseTime, dayKind, daysInMonth, ceYear, toRowsByDay } from './calc.js';
+import { allClients, divName, MONTHS, DAYOFF_LABELS, parseTime, dayKind, daysInMonth, ceYear, toRowsByDay } from './calc.js';
 
 const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 const XML_HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
@@ -102,7 +102,7 @@ export async function fillTemplate(templateBuf, S, doc){
 
   // --- หัวรายงาน ---
   ts.set('C3', MONTHS[doc.month-1]); ts.set('F3', +doc.year);
-  ts.set('Z3', doc.name || ''); ts.set('AH3', doc.division || '');
+  ts.set('Z3', doc.name || ''); ts.set('AH3', divName(S, doc.division) || '');
   ts.set('AO1', +S.stdHours || 8);
   ot.set('T1', +S.stdHours || 8); ot.set('T2', +S.lunchHours || 0);
   tr.set('O2', doc.approvedBy || null);
@@ -149,8 +149,9 @@ export async function fillTemplate(templateBuf, S, doc){
     if (h){ hd.set('A'+row, serial(h.date), 'A5'); hd.set('B'+row, h.name, 'B5'); if (!hd.has('C'+row)) hd.set('C'+row, null); }
     else { hd.set('A'+row, null); if (i >= 22) hd.set('B'+row, null); else hd.set('B'+row, null); }
   }
-  S.clients.slice(0, 489).forEach((c, i) => hd.set('H'+(12+i), c));
-  hd.clearRange('H', 12 + Math.min(S.clients.length, 489), 500);
+  const CL = allClients(S);
+  CL.slice(0, 489).forEach((c, i) => hd.set('H'+(12+i), c));
+  hd.clearRange('H', 12 + Math.min(CL.length, 489), 500);
   S.periods.slice(0, 190).forEach((p, i) => hd.set('I'+(3+i), p));
   hd.clearRange('I', 3 + Math.min(S.periods.length, 190), 200);
 
