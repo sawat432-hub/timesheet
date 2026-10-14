@@ -115,11 +115,17 @@ export function summarize(S, be, m, rowsByDay){
   const dayTot = Array(n+1).fill(0);
   allRows.forEach(x => { if (x.m!=null) dayTot[x.d] += x.m/60; });
   const sumFor = code => { const v=Array(n+1).fill(0); allRows.forEach(x => { if (x.m!=null && x.r.client===code) v[x.d] += x.m/60; }); return v; };
-  const used = new Set(allRows.filter(x => x.r.client).map(x => x.r.client));
-  const clientRows = allClients(S).filter(c => used.has(c)).map((c,i) => {
-    const first = allRows.find(x => x.r.client===c && x.r.service);
-    const v = sumFor(c);
-    return {no:i+1, code:c, period:first ? first.r.service : '', v, total:v.slice(1).reduce((a,b)=>a+b,0)};
+  /* แยกแถวตาม ลูกค้า + งวด (Period) — ลูกค้าเดียวกันแต่คนละงวด (เช่น 68YE กับ Q3/69) ต้องไม่ถูกรวมเป็นแถวเดียว */
+  const clientRows = [];
+  allClients(S).forEach(c => {
+    const mine = allRows.filter(x => x.m!=null && x.r.client===c);
+    if (!mine.length && !allRows.some(x => x.r.client===c)) return;
+    const periods = []; mine.forEach(x => { const p = x.r.service || ''; if (!periods.includes(p)) periods.push(p); });
+    if (!periods.length) periods.push('');
+    periods.forEach(p => {
+      const v = Array(n+1).fill(0); mine.forEach(x => { if ((x.r.service || '') === p) v[x.d] += x.m/60; });
+      clientRows.push({no:clientRows.length+1, code:c, period:p, v, total:v.slice(1).reduce((a,b)=>a+b,0)});
+    });
   });
   const colSum = rows => { const v=Array(n+1).fill(0); rows.forEach(r => { for (let d=1; d<=n; d++) v[d]+=r.v[d]; }); return v; };
   const A = colSum(clientRows);
